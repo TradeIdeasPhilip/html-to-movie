@@ -4,42 +4,153 @@ export function add(a: number, b: number): number {
   return a + b;
 }
 
-const FRAME_COUNT = 100;
-function format(n: number) {
-  return n.toString().padStart(3, "0");
+/**
+ * Asserts these very common bounds on the input.
+ * Many processes, especially animations and pieces of animations, accept 0 for the beginning, 1 for the end, and any number you want in between.
+ *
+ * This same assertion exists a lot in the remote code that we are running.
+ * It would be nice to catch any errors here, sooner, closer to the source of the error.
+ * @param t A value between 0 and 1.
+ */
+function assertValidT(t: number) {
+  if (!(isFinite(t) && t >= 0 && t <= 1)) {
+    throw new Error(`t should be between 0 and 1, inclusive. t == ${t}`);
+  }
 }
 
 if (import.meta.main) {
   const startTime = performance.now();
   const browser = await launch();
-  const page = await browser.newPage(
-    "http://localhost:5173/estimate-tangent-line.html"
-  );
-  page.setViewportSize({ width: 1920, height: 1080 });
+  const page = await browser.newPage();
 
-  const fromRemote = await page.evaluate(() =>
-    (window as any).initScreenCapture()
-  );
-  console.log(fromRemote);
+  // MARK: Configurable Stuff
 
-  const ffmpegProcess = new Deno.Command("./ffmpeg", {
-    args: "-loglevel warning -framerate 60 -f image2pipe -i - -c:v libx264 -r 60 -pix_fmt yuv420p output/output.mp4".split(
-      " "
-    ),
-    stdin: "piped",
-  }).spawn();
-  const writer = ffmpegProcess.stdin.getWriter();
+  // Note:  This is the size in CSS pixels, not device pixels.
+  // You will get twice as many pixels (in each dimension) as you request here.
+  //page.setViewportSize({ width: 1920, height: 1080 });
+  page.setViewportSize({ width: 480, height: 270 });
+  const FRAMES_PER_SECOND = 60;
+
+  // MARK: Configuration Ends
+
+  class FfmpegProcess {
+    static #writer: WritableStreamDefaultWriter<Uint8Array> | undefined;
+    static get writer() {
+      if (!this.#writer) {
+        // I copied most of this from https://shotstack.io/learn/use-ffmpeg-to-convert-images-to-video/
+        const args = [
+          "-loglevel",
+          "warning",
+          "-framerate",
+          FRAMES_PER_SECOND.toString(),
+          "-f",
+          "image2pipe",
+          "-i",
+          "-",
+          "-c:v",
+          "libx264",
+          "-r",
+          FRAMES_PER_SECOND.toString(),
+          "-pix_fmt",
+          "yuv420p",
+          videoName(),
+        ];
+        const ffmpegProcess = new Deno.Command("./ffmpeg", {
+          args,
+          stdin: "piped",
+        }).spawn();
+        ffmpegProcess.ref();
+        this.#writer = ffmpegProcess.stdin.getWriter();
+      }
+      return this.#writer;
+    }
+    static async close() {
+      await this.#writer?.close();
+    }
+  }
 
   const promises: Promise<void>[] = [];
 
-  for (let i = 0; i < FRAME_COUNT; i++) {
-    page.evaluate((t) => (window as any).showFrame(t), {
-      args: [i / (FRAME_COUNT - 1)],
-    });
-    const screenshot = await page.screenshot();
-    await writer.write(screenshot);
-    //promises.push(Deno.writeFile(`screenshot${format(i)}.png`, screenshot));
-  }
+  /**
+   * This function exists on the remote system as a global.
+   * Call this once before asking for individual frames.
+   * @param script A value that is passed on to the remote system.
+   * This makes it easy for one html program to implement different scenes.
+   * This could be anything, depending on the remote program.
+   * Currently one of my programs ignores this and the other uses a string to select from a few well know programs.
+   * This value must be JSON friendly to get to the remote process in tact.
+   */
+  const initScreenCapture = (script: unknown) => {
+    JSON.stringify(script);
+    throw "wtf";
+  };
+
+  /**
+   * This function exists on the remote system as a global.
+   * Call this to ask it to draw a particular frame.
+   * @param t A number between 0 and 1, inclusive.
+   * The remote system doesn't know about seconds or frame numbers.
+   * It only knows how to draw the system at a time between 0 and 1.
+   */
+  const showFrame = (t: number) => {
+    t;
+    throw "wtf";
+  };
+
+  const screenshotName = () => `output/${Date.now()}.png`;
+  const videoName = () => `output/${Date.now()}.mp4`;
+
+  const processUrl = async (request: {
+    url: string;
+    seconds?: number;
+    frames?: readonly number[];
+    script?: unknown;
+  }) => {
+    await page.goto(request.url);
+    const fromRemote = await page.evaluate(
+      (script) => initScreenCapture(script),
+      { args: [request.script] }
+    );
+    console.log(fromRemote);
+    if (request.seconds !== undefined) {
+      const frameCount = request.seconds * FRAMES_PER_SECOND;
+      for (let i = 0; i < frameCount; i++) {
+        page.evaluate((t) => showFrame(t), {
+          args: [i / (frameCount - 1)],
+        });
+        const screenshot = await page.screenshot();
+        await FfmpegProcess.writer.write(screenshot);
+      }
+    }
+    if (request.frames) {
+      for (const t of request.frames) {
+        assertValidT(t);
+        page.evaluate((t) => showFrame(t), { args: [t] });
+        const screenshot = await page.screenshot();
+        promises.push(Deno.writeFile(screenshotName(), screenshot));
+      }
+    }
+  };
+
+  // MARK: Business Logic
+
+  await processUrl({
+    url: "http://localhost:5173/estimate-tangent-line.html",
+    //seconds: 6,
+    script: "introduction",
+  });
+  await processUrl({
+    url: "http://localhost:5173/show-text.html",
+    //seconds: 14,
+    frames: [1],
+  });
+  await processUrl({
+    url: "http://localhost:5173/estimate-tangent-line.html",
+    seconds: 39.43333333333333,
+    script: "main",
+  });
+
+  // MARK: Business Logic End
 
   console.log(
     `Waiting for writes after ${
@@ -47,18 +158,9 @@ if (import.meta.main) {
     } seconds.`
   );
 
+  promises.push(FfmpegProcess.close(), browser.close());
   await Promise.all(promises);
-  await writer.close();
-  //await ffmpegProcess.stdin.close();
-  ffmpegProcess.ref();
-  await browser.close();
 
   const endTime = performance.now();
-  console.log(
-    `${FRAME_COUNT} frames in ${(endTime - startTime) / 1000} seconds.  (${
-      (endTime - startTime) / 1000 / FRAME_COUNT
-    } seconds/frame)`
-  );
+  console.log(`${(endTime - startTime) / 1000} seconds.`);
 }
-
-// cat *.png | ../ffmpeg -loglevel warning -framerate 60 -f image2pipe -i - -c:v libx264 -r 60 -pix_fmt yuv420p output.mp4

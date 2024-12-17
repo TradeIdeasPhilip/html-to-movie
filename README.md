@@ -38,30 +38,43 @@ Then you add two additional methods to the window object.
 - `showFrame(t : number) : void` is called before each screenshot.
   - The input should be a number between 0 and 1, inclusive.
   - The content doesn't know how long it will run for or the frame rate.
+  - Make no assumptions about the order in which the frames will be requested.
 
 The content can be hosted anywhere.
 I'm typically running the content locally using Vite and VS Code, so I can modify it as I go.
+
+I recommend using the JavaScript Animation API, rather than putting `@keyframes` into a CSS file.
+I recommend this in almost all cases, but especially here.
+This project explicitly avoids any realtime work, and pure CSS animations always use the realtime clock.
+In the API you can initially set the animation's duration to `1` and `pause()` it.
+Then you can copy the value of `t` directly into `animation.currentTime`.
 
 ### Rendering Your Content
 
 Once your content is up, run this program to record it.
 There is no user interface, yet.
 You have to change [./main.ts](./main.ts).
-At a bare minimum configure the following:
-
-- `FRAME_COUNT`
-- `page.setViewportSize()`
-- and the URL in `browser.newPage()`
-
+Search for `MARK: Business Logic` and replace that with your own script.
+Search for `MARK: Configurable Stuff` for optional settings.
 Then run the following:
 
 ```
 deno --allow-all run ./main.ts
 ```
 
-The output is currently hardcoded to `output/output.mp4`.
+The output all goes to the `output/` directory.
+Depending on your business logic you can get 0 or 1 _.mp4 files and 0 or more _.png files.
+I use an increasing number for the file name, so repeated runs will not overwrite previous results.
 
 ## This is a work in progress!
 
 It's working, but very rough.
+I'm just starting to use it for real and I'm finding the missing features.
+
 There is a lot of room for performance tuning.
+There are a lot of obvious things to do, but the details keep changing.
+I'll optimize when I understand the problem better.
+
+When I cut the resolution by 4x (in each dimension) I got the result in about ⅒ the time.
+That works well for a temporary file.
+I can use the low quality print to make sure I have the timing perfect and the other features at least close.
