@@ -11,7 +11,7 @@ The recorder will wait as little or long as needed to save each frame.
 
 The content does **not** need to display on your screen while you're recording it.
 By default the content displays on a window that is never displayed.
-The window can be any size I want, even bigger than your physical screen.
+The window can be any size you want, even bigger than your physical screen.
 So you can make high quality, high resolution videos on any computer.
 
 This only creates video, not audio.
@@ -59,11 +59,11 @@ Search for `MARK: Configurable Stuff` for optional settings.
 Then run the following:
 
 ```
-deno --allow-all run ./main.ts
+deno run --allow-all ./main.ts
 ```
 
 The output all goes to the `output/` directory.
-Depending on your business logic you can get 0 or 1 _.mp4 files and 0 or more _.png files.
+Depending on your business logic you can get 0 or 1 \*.mp4 files and 0 or more \*.png files.
 I use an increasing number for the file name, so repeated runs will not overwrite previous results.
 
 ## This is a work in progress!

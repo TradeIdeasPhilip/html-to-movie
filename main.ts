@@ -27,8 +27,8 @@ if (import.meta.main) {
 
   // Note:  This is the size in CSS pixels, not device pixels.
   // You will get twice as many pixels (in each dimension) as you request here.
-  //page.setViewportSize({ width: 1920, height: 1080 });
-  page.setViewportSize({ width: 480, height: 270 });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  //page.setViewportSize({ width: 480, height: 270 });
   const FRAMES_PER_SECOND = 60;
 
   // MARK: Configuration Ends
@@ -134,21 +134,49 @@ if (import.meta.main) {
 
   // MARK: Business Logic
 
-  await processUrl({
-    url: "http://localhost:5173/estimate-tangent-line.html",
-    //seconds: 6,
-    script: "introduction",
-  });
-  await processUrl({
-    url: "http://localhost:5173/show-text.html",
-    //seconds: 14,
-    frames: [1],
-  });
-  await processUrl({
-    url: "http://localhost:5173/estimate-tangent-line.html",
-    seconds: 39.43333333333333,
-    script: "main",
-  });
+  const which: string = "tau";
+
+  switch (which) {
+    case "tangent thing": {
+      await processUrl({
+        url: "http://localhost:5173/estimate-tangent-line.html",
+        //seconds: 6,
+        script: "introduction",
+      });
+      await processUrl({
+        url: "http://localhost:5173/show-text.html",
+        //seconds: 14,
+        frames: [1],
+      });
+      await processUrl({
+        url: "http://localhost:5173/estimate-tangent-line.html",
+        //seconds: 39.43333333333333,
+        script: "main",
+      });
+      await processUrl({
+        url: "http://localhost:5173/show-text-1.html",
+        seconds: 45,
+        frames: [0.3333, 0.5, 1],
+      });
+
+      break;
+    }
+    case "tau": {
+      await processUrl({
+        url: "http://localhost:5173/tau",
+        seconds: 45,
+        script: "main",
+      });
+      //480 x 270
+      await page.setViewportSize({ width: 240, height: 135 });
+      await processUrl({
+        url: "http://localhost:5173/tau",
+        frames: [1],
+        script: "thumbnail",
+      });
+      break;
+    }
+  }
 
   // MARK: Business Logic End
 
