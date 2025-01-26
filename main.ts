@@ -134,9 +134,14 @@ if (import.meta.main) {
 
   // MARK: Business Logic
 
-  const which: string = "tau";
+  const which: string = "bug splat";
 
   switch (which) {
+    case "bug splat":{
+      // random-svg-tests
+      await processUrl({url:"http://localhost:5173/bug-splat.html", seconds:47 + 38 / 60, frames:[0,0.25,0.5,0.75]});
+      break;
+    }
     case "tangent thing": {
       await processUrl({
         url: "http://localhost:5173/estimate-tangent-line.html",
@@ -146,7 +151,7 @@ if (import.meta.main) {
       await processUrl({
         url: "http://localhost:5173/show-text.html",
         //seconds: 14,
-        frames: [1],
+        //frames: [1],
       });
       await processUrl({
         url: "http://localhost:5173/estimate-tangent-line.html",
@@ -155,8 +160,7 @@ if (import.meta.main) {
       });
       await processUrl({
         url: "http://localhost:5173/show-text-1.html",
-        seconds: 45,
-        frames: [0.3333, 0.5, 1],
+        seconds: 51,        
       });
 
       break;
@@ -176,6 +180,7 @@ if (import.meta.main) {
       });
       break;
     }
+    default:{throw new Error("wtf")}
   }
 
   // MARK: Business Logic End
