@@ -134,12 +134,24 @@ if (import.meta.main) {
 
   // MARK: Business Logic
 
-  const which: string = "bug splat";
+  const which: string = "better derivative";
 
   switch (which) {
-    case "bug splat":{
+    case "better derivative": {
       // random-svg-tests
-      await processUrl({url:"http://localhost:5173/bug-splat.html", seconds:47 + 38 / 60, frames:[0,0.25,0.5,0.75]});
+      await processUrl({
+        url: "http://localhost:5173/tangent-line-2.html",
+        seconds: 17,
+      });
+      break;
+    }
+    case "bug splat": {
+      // random-svg-tests
+      await processUrl({
+        url: "http://localhost:5173/bug-splat.html",
+        seconds: 47 + 38 / 60,
+        frames: [0, 0.25, 0.5, 0.75],
+      });
       break;
     }
     case "tangent thing": {
@@ -160,7 +172,7 @@ if (import.meta.main) {
       });
       await processUrl({
         url: "http://localhost:5173/show-text-1.html",
-        seconds: 51,        
+        seconds: 51,
       });
 
       break;
@@ -180,7 +192,9 @@ if (import.meta.main) {
       });
       break;
     }
-    default:{throw new Error("wtf")}
+    default: {
+      throw new Error("wtf");
+    }
   }
 
   // MARK: Business Logic End
