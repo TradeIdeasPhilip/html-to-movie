@@ -141,7 +141,7 @@ if (import.meta.main) {
       // random-svg-tests
       await processUrl({
         url: "http://localhost:5173/tangent-line-2.html",
-        seconds: 17,
+        seconds: 27,
       });
       break;
     }
