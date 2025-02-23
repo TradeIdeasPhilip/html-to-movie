@@ -23,12 +23,76 @@ if (import.meta.main) {
   const browser = await launch();
   const page = await browser.newPage();
 
+  const getScreenshot = async () => {
+    try {
+      const screenshot = await page.screenshot({ optimizeForSpeed: true });
+      return screenshot;
+    } catch (reason) {
+      console.warn("Retrying", reason);
+      try {
+        const screenshot = await page.screenshot({ optimizeForSpeed: true });
+        return screenshot;
+      } catch (reason) {
+        console.error("Failed", reason);
+        return undefined;
+      }
+    }
+    // This is the error I was seeing sometimes.
+    /*
+          error: Uncaught (in promise) RetryError: Retrying exceeded the maxAttempts (5).
+              throw new RetryError(error, maxAttempts);
+                    ^
+          at retry (https://jsr.io/@std/async/1.0.9/retry.ts:154:15)
+          at eventLoopTick (ext:core/01_core.js:216:9)
+          at async Page.screenshot (https://jsr.io/@astral/astral/0.4.9/src/page.ts:626:22)
+          at async processUrl (file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:132:28)
+          at async file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:172:7
+      Caused by: TimeoutError: Signal timed out.
+          at ext:deno_web/03_abort_signal.js:130:11
+          at eventLoopTick (ext:core/01_core.js:212:13)
+    */
+    // This is what I saw after adding this event handler.
+    /*
+        Retrying RetryError: Retrying exceeded the maxAttempts (5).
+          at retry (https://jsr.io/@std/async/1.0.9/retry.ts:154:15)
+          at eventLoopTick (ext:core/01_core.js:216:9)
+          at async Page.screenshot (https://jsr.io/@astral/astral/0.4.9/src/page.ts:626:22)
+          at async getScreenshot (file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:28:26)
+          at async processUrl (file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:148:28)
+          at async file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:192:7
+      Caused by TimeoutError: Signal timed out.
+          at ext:deno_web/03_abort_signal.js:130:11
+          at eventLoopTick (ext:core/01_core.js:212:13) {
+        name: "RetryError"
+      }
+      Failed RetryError: Retrying exceeded the maxAttempts (5).
+          at retry (https://jsr.io/@std/async/1.0.9/retry.ts:154:15)
+          at eventLoopTick (ext:core/01_core.js:216:9)
+          at async Page.screenshot (https://jsr.io/@astral/astral/0.4.9/src/page.ts:626:22)
+          at async getScreenshot (file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:33:28)
+          at async processUrl (file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:148:28)
+          at async file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:192:7
+      Caused by TimeoutError: Signal timed out.
+          at ext:deno_web/03_abort_signal.js:130:11
+          at eventLoopTick (ext:core/01_core.js:212:13) {
+        name: "RetryError"
+      }
+      Aborting.  Unable to render frame 14934
+      Waiting for writes after 2179.2570044159997 seconds.
+      2179.4041388329997 seconds.
+   */
+    // It appears that the browser gets into some strange state.
+    // Repeating the operation doesn't help.
+    // I did manage to write out a useable mp4 file, so I don't have to restart from scratch.
+    // TODO Try closing and restarting the browser, then retrying.
+  };
+
   // MARK: Configurable Stuff
 
   // Note:  This is the size in CSS pixels, not device pixels.
   // You will get twice as many pixels (in each dimension) as you request here.
   await page.setViewportSize({ width: 1920, height: 1080 });
-  //page.setViewportSize({ width: 480, height: 270 });
+  //await page.setViewportSize({ width: 480, height: 270 });
   const FRAMES_PER_SECOND = 60;
 
   // MARK: Configuration Ends
@@ -105,6 +169,8 @@ if (import.meta.main) {
     seconds?: number;
     frames?: readonly number[];
     script?: unknown;
+    slurpAll?: boolean;
+    slurpStartAt?: number;
   }) => {
     await page.goto(request.url);
     const fromRemote = await page.evaluate(
@@ -112,6 +178,39 @@ if (import.meta.main) {
       { args: [request.script] }
     );
     console.log(fromRemote);
+    if (request.slurpAll) {
+      const { firstFrame, lastFrame } = fromRemote as {
+        readonly firstFrame: number;
+        readonly lastFrame: number;
+      };
+      if (typeof firstFrame !== "number" || typeof lastFrame !== "number") {
+        throw new Error("wtf");
+      }
+      for (
+        let frameNumber = request.slurpStartAt ?? firstFrame;
+        frameNumber <= lastFrame;
+        frameNumber++
+      ) {
+        page.evaluate((t) => showFrame(t), {
+          args: [frameNumber],
+        });
+        const screenshot = await getScreenshot();
+        if (!screenshot) {
+          console.error(`Aborting.  Unable to render frame ${frameNumber}`);
+          break;
+        }
+        await FfmpegProcess.writer.write(screenshot);
+        if (frameNumber % 103 == 101) {
+          const index = frameNumber - firstFrame;
+          const total = lastFrame - firstFrame;
+          console.log(
+            `${index} of ${total}, ${((index / total) * 100).toFixed(
+              3
+            )}% at ${new Date().toLocaleTimeString()}`
+          );
+        }
+      }
+    }
     if (request.seconds !== undefined) {
       const frameCount = request.seconds * FRAMES_PER_SECOND;
       for (let i = 0; i < frameCount; i++) {
@@ -124,7 +223,7 @@ if (import.meta.main) {
     }
     if (request.frames) {
       for (const t of request.frames) {
-        assertValidT(t);
+        //  assertValidT(t);
         page.evaluate((t) => showFrame(t), { args: [t] });
         const screenshot = await page.screenshot();
         promises.push(Deno.writeFile(screenshotName(), screenshot));
@@ -134,9 +233,20 @@ if (import.meta.main) {
 
   // MARK: Business Logic
 
-  const which: string = "better derivative";
+  const which: string = "dx demo";
 
   switch (which) {
+    case "dx demo": {
+      // dx.html
+      await processUrl({
+        url: "http://localhost:5173/dx.html",
+        script: "demo",
+        slurpAll: true,
+        //slurpStartAt: 14934,
+        //   frames:[240]
+      });
+      break;
+    }
     case "better derivative": {
       // random-svg-tests
       await processUrl({
