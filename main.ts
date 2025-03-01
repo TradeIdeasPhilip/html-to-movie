@@ -4,25 +4,25 @@ export function add(a: number, b: number): number {
   return a + b;
 }
 
-/**
- * Asserts these very common bounds on the input.
- * Many processes, especially animations and pieces of animations, accept 0 for the beginning, 1 for the end, and any number you want in between.
- *
- * This same assertion exists a lot in the remote code that we are running.
- * It would be nice to catch any errors here, sooner, closer to the source of the error.
- * @param t A value between 0 and 1.
- */
-function assertValidT(t: number) {
-  if (!(isFinite(t) && t >= 0 && t <= 1)) {
-    throw new Error(`t should be between 0 and 1, inclusive. t == ${t}`);
-  }
-}
-
 if (import.meta.main) {
+  /**
+   * Performance information will be sent to the console.
+   */
   const startTime = performance.now();
   const browser = await launch();
   const page = await browser.newPage();
 
+  /**
+   * This is a wrapper around page.screenshot() which handles some errors.
+   * 
+   * I'm  still looking at the best way to handle the errors.
+   * The details inside this function are still changing.
+   * @returns A PNG file, or `undefined` in case of failure.
+   * @throws nothing.  
+   * This will catch any downstream errors,
+   * retry a finite number of times,
+   * and ultimately report `undefined` if we can't fix the problem.
+   */
   const getScreenshot = async () => {
     try {
       const screenshot = await page.screenshot({ optimizeForSpeed: true });
@@ -97,8 +97,17 @@ if (import.meta.main) {
 
   // MARK: Configuration Ends
 
+  /**
+   * This creates the *.mp4 file.
+   * 
+   * This is static for simplicity.
+   * Each time you run this program it will create at most one of these files.
+   */
   class FfmpegProcess {
     static #writer: WritableStreamDefaultWriter<Uint8Array> | undefined;
+    /**
+     * The writer will be created on the first use of this property, and reused as necessary.
+     */
     static get writer() {
       if (!this.#writer) {
         // I copied most of this from https://shotstack.io/learn/use-ffmpeg-to-convert-images-to-video/
@@ -128,6 +137,9 @@ if (import.meta.main) {
       }
       return this.#writer;
     }
+    /**
+     * If you don't call this, the resulting file is typically unreadable.
+     */
     static async close() {
       await this.#writer?.close();
     }
@@ -144,7 +156,14 @@ if (import.meta.main) {
    * Currently one of my programs ignores this and the other uses a string to select from a few well know programs.
    * This value must be JSON friendly to get to the remote process in tact.
    */
-  const initScreenCapture = (script: unknown) => {
+  const initScreenCapture = (
+    script: unknown
+  ): {
+    source: string;
+    devicePixelRatio: number;
+    firstFrame?: number;
+    lastFrame?: number;
+  } => {
     JSON.stringify(script);
     throw "wtf";
   };
@@ -166,6 +185,7 @@ if (import.meta.main) {
 
   const processUrl = async (request: {
     url: string;
+    expectedSource?: string;
     seconds?: number;
     frames?: readonly number[];
     script?: unknown;
@@ -178,11 +198,15 @@ if (import.meta.main) {
       { args: [request.script] }
     );
     console.log(fromRemote);
+    if (
+      request.expectedSource !== undefined &&
+      request.expectedSource != fromRemote.source
+    ) {
+      console.log(request);
+      throw new Error("wrong source");
+    }
     if (request.slurpAll) {
-      const { firstFrame, lastFrame } = fromRemote as {
-        readonly firstFrame: number;
-        readonly lastFrame: number;
-      };
+      const { firstFrame, lastFrame } = fromRemote;
       if (typeof firstFrame !== "number" || typeof lastFrame !== "number") {
         throw new Error("wtf");
       }
@@ -233,10 +257,12 @@ if (import.meta.main) {
 
   // MARK: Business Logic
 
-  const which: string = "dx demo";
+  const which: string = "better derivative";
 
   switch (which) {
     case "dx demo": {
+      // https://www.youtube.com/watch?v=THZZlEpo684 A quick overview of dx — Calculus class & real world perspectives.
+      // https://www.youtube.com/watch?v=uRtn72SrE10 Low res preview
       // dx.html
       await processUrl({
         url: "http://localhost:5173/dx.html",
@@ -250,12 +276,20 @@ if (import.meta.main) {
     case "better derivative": {
       // random-svg-tests
       await processUrl({
+        url: "http://localhost:5173/estimate-tangent-line.html",
+        expectedSource: "estimate-tangent-line.ts",
+        seconds: 10,
+        script: "introduction",
+      });
+      await processUrl({
+        // https://www.youtube.com/watch?v=0pZ10xOPHL4 Parabolas vs Line Segments & Better Morphing
         url: "http://localhost:5173/tangent-line-2.html",
-        seconds: 27,
+        // seconds: 27,
       });
       break;
     }
     case "bug splat": {
+      // https://www.youtube.com/watch?v=BgSACVlGmbg  #SVG bug splat effect using feTurbulence and feDisplacementMap
       // random-svg-tests
       await processUrl({
         url: "http://localhost:5173/bug-splat.html",
@@ -265,6 +299,7 @@ if (import.meta.main) {
       break;
     }
     case "tangent thing": {
+      // https://www.youtube.com/watch?v=ozvehaKqUFk  Simple Numerical Differentiation & Finite Differences
       await processUrl({
         url: "http://localhost:5173/estimate-tangent-line.html",
         //seconds: 6,
@@ -288,6 +323,7 @@ if (import.meta.main) {
       break;
     }
     case "tau": {
+      // https://www.youtube.com/watch?v=LQeiRXg8zGk  Homage to This open problem taught me what topology is #3blue1brown
       await processUrl({
         url: "http://localhost:5173/tau",
         seconds: 45,
