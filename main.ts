@@ -14,11 +14,11 @@ if (import.meta.main) {
 
   /**
    * This is a wrapper around page.screenshot() which handles some errors.
-   * 
+   *
    * I'm  still looking at the best way to handle the errors.
    * The details inside this function are still changing.
    * @returns A PNG file, or `undefined` in case of failure.
-   * @throws nothing.  
+   * @throws nothing.
    * This will catch any downstream errors,
    * retry a finite number of times,
    * and ultimately report `undefined` if we can't fix the problem.
@@ -99,7 +99,7 @@ if (import.meta.main) {
 
   /**
    * This creates the *.mp4 file.
-   * 
+   *
    * This is static for simplicity.
    * Each time you run this program it will create at most one of these files.
    */
@@ -110,6 +110,8 @@ if (import.meta.main) {
      */
     static get writer() {
       if (!this.#writer) {
+        const fileName = makeVideoFileName();
+        console.log(fileName);
         // I copied most of this from https://shotstack.io/learn/use-ffmpeg-to-convert-images-to-video/
         const args = [
           "-loglevel",
@@ -126,7 +128,7 @@ if (import.meta.main) {
           FRAMES_PER_SECOND.toString(),
           "-pix_fmt",
           "yuv420p",
-          videoName(),
+          fileName,
         ];
         const ffmpegProcess = new Deno.Command("./ffmpeg", {
           args,
@@ -180,8 +182,8 @@ if (import.meta.main) {
     throw "wtf";
   };
 
-  const screenshotName = () => `output/${Date.now()}.png`;
-  const videoName = () => `output/${Date.now()}.mp4`;
+  const makeScreenshotFileName = () => `output/${Date.now()}.png`;
+  const makeVideoFileName = () => `output/${Date.now()}.mp4`;
 
   const processUrl = async (request: {
     url: string;
@@ -243,14 +245,22 @@ if (import.meta.main) {
         });
         const screenshot = await page.screenshot();
         await FfmpegProcess.writer.write(screenshot);
+        if (i % 107 == 103) {
+          console.log(
+            `${i} of ${frameCount}, ${((i / frameCount) * 100).toFixed(
+              3
+            )}% at ${new Date().toLocaleTimeString()}`
+          );
+        }
       }
     }
     if (request.frames) {
       for (const t of request.frames) {
-        //  assertValidT(t);
         page.evaluate((t) => showFrame(t), { args: [t] });
+        const fileName = makeScreenshotFileName();
+        console.log(fileName);
         const screenshot = await page.screenshot();
-        promises.push(Deno.writeFile(screenshotName(), screenshot));
+        promises.push(Deno.writeFile(fileName, screenshot));
       }
     }
   };
@@ -278,8 +288,12 @@ if (import.meta.main) {
       await processUrl({
         url: "http://localhost:5173/estimate-tangent-line.html",
         expectedSource: "estimate-tangent-line.ts",
-        seconds: 10,
+        seconds: 8.5,
         script: "introduction",
+      });
+      await processUrl({
+        url: "http://localhost:5173/text-for-derivative.html",
+        slurpAll: true,
       });
       await processUrl({
         // https://www.youtube.com/watch?v=0pZ10xOPHL4 Parabolas vs Line Segments & Better Morphing
