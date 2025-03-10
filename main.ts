@@ -165,6 +165,7 @@ if (import.meta.main) {
     devicePixelRatio: number;
     firstFrame?: number;
     lastFrame?: number;
+    seconds?: number;
   } => {
     JSON.stringify(script);
     throw "wtf";
@@ -194,12 +195,16 @@ if (import.meta.main) {
     slurpAll?: boolean;
     slurpStartAt?: number;
   }) => {
-    await page.goto(request.url);
-    const fromRemote = await page.evaluate(
-      (script) => initScreenCapture(script),
-      { args: [request.script] }
-    );
-    console.log(fromRemote);
+    async function initializeUrl(reason = "retry") {
+      await page.goto(request.url);
+      const fromRemote = await page.evaluate(
+        (script) => initScreenCapture(script),
+        { args: [request.script] }
+      );
+      console.log(reason, request.url, fromRemote);
+      return fromRemote;
+    }
+    const fromRemote = await initializeUrl("processUrl");
     if (
       request.expectedSource !== undefined &&
       request.expectedSource != fromRemote.source
@@ -208,32 +213,81 @@ if (import.meta.main) {
       throw new Error("wrong source");
     }
     if (request.slurpAll) {
-      const { firstFrame, lastFrame } = fromRemote;
-      if (typeof firstFrame !== "number" || typeof lastFrame !== "number") {
-        throw new Error("wtf");
-      }
-      for (
-        let frameNumber = request.slurpStartAt ?? firstFrame;
-        frameNumber <= lastFrame;
-        frameNumber++
-      ) {
-        page.evaluate((t) => showFrame(t), {
-          args: [frameNumber],
-        });
-        const screenshot = await getScreenshot();
-        if (!screenshot) {
-          console.error(`Aborting.  Unable to render frame ${frameNumber}`);
-          break;
+      const { firstFrame, lastFrame, seconds } = fromRemote;
+      if (typeof seconds === "number") {
+        // I'm not sure about round-off error and the like.
+        // It seems like 10 segments of 1 second each should produce the exact same number
+        // of frames as a single segment that is 10 seconds long.
+        // I'm avoiding for the moment because it's complicated.
+        // Time might not be an integer number of seconds or frames!!!
+        const lastFrameNumber = seconds * FRAMES_PER_SECOND - 1;
+        for (
+          let frameNumber = request.slurpStartAt ?? 0;
+          frameNumber < lastFrameNumber;
+          frameNumber++
+        ) {
+          const timeInSeconds = frameNumber / FRAMES_PER_SECOND;
+          page.evaluate((t) => showFrame(t), {
+            args: [timeInSeconds],
+          });
+          let screenshot = await getScreenshot();
+          if (!screenshot) {
+            // TODO test this code!
+            // I haven't been able to make the program fail yet.
+            // I was hoping it would fail on it's own, and then I tried some simple things to break it.
+            // I suspect this will help, but I have no idea what the problem is so I can't be sure.
+            // TODO copy this to other places if it works.
+            // This code is a mess and I'm not sure how to clean it up,
+            // so I don't want to think about copying anything until I'm sure this works.
+            await initializeUrl();
+            page.evaluate((t) => showFrame(t), {
+              args: [timeInSeconds],
+            });
+            screenshot = await getScreenshot();
+            if (!screenshot) {
+              console.error(
+                `Aborting.  Unable to render frame ${frameNumber}. timeInSeconds=${timeInSeconds}`
+              );
+              break;
+            }
+          }
+          await FfmpegProcess.writer.write(screenshot);
+          if (frameNumber % 120 == 0) {
+            console.log(
+              `${frameNumber} of ${lastFrameNumber} frames, ${timeInSeconds} of ${seconds} seconds, ${(
+                (frameNumber / lastFrameNumber) *
+                100
+              ).toFixed(3)}% at ${new Date().toLocaleTimeString()}`
+            );
+          }
         }
-        await FfmpegProcess.writer.write(screenshot);
-        if (frameNumber % 103 == 101) {
-          const index = frameNumber - firstFrame;
-          const total = lastFrame - firstFrame;
-          console.log(
-            `${index} of ${total}, ${((index / total) * 100).toFixed(
-              3
-            )}% at ${new Date().toLocaleTimeString()}`
-          );
+      } else {
+        if (typeof firstFrame !== "number" || typeof lastFrame !== "number") {
+          throw new Error("wtf");
+        }
+        for (
+          let frameNumber = request.slurpStartAt ?? firstFrame;
+          frameNumber <= lastFrame;
+          frameNumber++
+        ) {
+          page.evaluate((t) => showFrame(t), {
+            args: [frameNumber],
+          });
+          const screenshot = await getScreenshot();
+          if (!screenshot) {
+            console.error(`Aborting.  Unable to render frame ${frameNumber}`);
+            break;
+          }
+          await FfmpegProcess.writer.write(screenshot);
+          if (frameNumber % 103 == 101) {
+            const index = frameNumber - firstFrame;
+            const total = lastFrame - firstFrame;
+            console.log(
+              `${index} of ${total}, ${((index / total) * 100).toFixed(
+                3
+              )}% at ${new Date().toLocaleTimeString()}`
+            );
+          }
         }
       }
     }
@@ -288,11 +342,15 @@ if (import.meta.main) {
       await processUrl({
         url: "http://localhost:5173/estimate-tangent-line.html",
         expectedSource: "estimate-tangent-line.ts",
-        seconds: 8.5,
+        //seconds: 8.5,
         script: "introduction",
       });
       await processUrl({
         url: "http://localhost:5173/text-for-derivative.html",
+        //slurpAll: true,
+      });
+      await processUrl({
+        url: "http://localhost:5173/parabola-tangent-line.html",
         slurpAll: true,
       });
       await processUrl({
