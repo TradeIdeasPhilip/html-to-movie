@@ -321,17 +321,29 @@ if (import.meta.main) {
 
   // MARK: Business Logic
 
-  const which: string = "better derivative";
+  const which: string = "some4";
 
   switch (which) {
+    case "some4": {
+      // https://youtu.be/ubVFzZNEphs
+      // https://github.com/TradeIdeasPhilip/random-svg-tests/blob/master/src/some4.ts
+      await processUrl({
+        url: "http://localhost:5173/some4.html",
+        // Also see parts 1-5!
+        script: "part 6",
+        slurpAll: true,
+        expectedSource: "some4.ts",
+      });
+      break;
+    }
     case "dx demo": {
       // https://www.youtube.com/watch?v=THZZlEpo684 A quick overview of dx — Calculus class & real world perspectives.
       // https://www.youtube.com/watch?v=uRtn72SrE10 Low res preview
-      // dx.html
       await processUrl({
         url: "http://localhost:5173/dx.html",
         script: "demo",
         slurpAll: true,
+        expectedSource: "dx.ts",
         //slurpStartAt: 14934,
         //   frames:[240]
       });
@@ -351,12 +363,19 @@ if (import.meta.main) {
       });
       await processUrl({
         url: "http://localhost:5173/parabola-tangent-line.html",
-        slurpAll: true,
+        //slurpAll: true,
+        //frames:[0],
       });
       await processUrl({
         // https://www.youtube.com/watch?v=0pZ10xOPHL4 Parabolas vs Line Segments & Better Morphing
         url: "http://localhost:5173/tangent-line-2.html",
         // seconds: 27,
+      });
+      await processUrl({
+        url: "http://localhost:5173/dx.html",
+        script: "main",
+        slurpAll: true,
+        expectedSource: "dx.ts",
       });
       break;
     }
