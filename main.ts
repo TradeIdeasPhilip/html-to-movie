@@ -321,9 +321,18 @@ if (import.meta.main) {
 
   // MARK: Business Logic
 
-  const which: string = "some4";
+  const which: string = "path-to-fourier";
 
   switch (which) {
+    case "path-to-fourier": {
+      // random-svg-tests
+      await processUrl({
+        url: `http://localhost:5173/path-to-fourier.html?script_name=${Deno.args[0]}`,
+        slurpAll: true,
+        expectedSource: "path-to-fourier.ts",
+      });
+      break;
+    }
     case "some4": {
       // https://youtu.be/ubVFzZNEphs
       // https://github.com/TradeIdeasPhilip/random-svg-tests/blob/master/src/some4.ts
