@@ -124,11 +124,25 @@ if (import.meta.main) {
           "-",
           "-c:v",
           "libx264",
+          "-preset",
+          "slow",
+          "-crf",
+          "18",
+          "-pix_fmt",
+          "yuv444p10le",
+          "-colorspace",
+          "bt709",
+          "-color_primaries",
+          "bt709",
+          "-color_trc",
+          "bt709",
+          "-color_range",
+          "pc",
+          "-metadata:s:v:0",
+          "color_space=display-p3",
           "-r",
           FRAMES_PER_SECOND.toString(),
-          "-pix_fmt",
-          "yuv420p",
-          fileName,
+          fileName.replace(".mov", ".mp4"),
         ];
         const ffmpegProcess = new Deno.Command("./ffmpeg", {
           args,
@@ -321,14 +335,26 @@ if (import.meta.main) {
 
   // MARK: Business Logic
 
-  const which: string = "path-to-fourier";
+  const which: string = "pentagrams";
 
   switch (which) {
+    case "pentagrams": {
+      // random-svg-tests
+      await processUrl({
+        url: "http://localhost:5173/fourier-smackdown.html",
+        slurpAll: true,
+        expectedSource: "fourier-smackdown.ts",
+        //frames: [1000, (61 / 60) * 1000],
+      });
+
+      break;
+    }
     case "path-to-fourier": {
       // random-svg-tests
       await processUrl({
         url: `http://localhost:5173/path-to-fourier.html?script_name=${Deno.args[0]}`,
         slurpAll: true,
+        //slurpStartAt: 5811,
         expectedSource: "path-to-fourier.ts",
       });
       break;
