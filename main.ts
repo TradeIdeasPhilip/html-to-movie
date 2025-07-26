@@ -44,54 +44,20 @@ if (import.meta.main) {
      */
     static get writer() {
       if (!this.#writer) {
-        const fileName = makeVideoFileName();
-        console.log(fileName);
-        const _args1 = [
-          "-loglevel",
-          "warning",
-          "-framerate",
-          FRAMES_PER_SECOND.toString(),
-          "-f",
-          "image2pipe",
-          "-i",
-          "-",
-          "-c:v",
-          "libx264",
-          "-preset",
-          "slow",
-          "-crf",
-          "18",
-          "-pix_fmt",
-          "yuv444p10le",
-          "-colorspace",
-          "bt709",
-          "-color_primaries",
-          "bt709",
-          "-color_trc",
-          "bt709",
-          "-color_range",
-          "pc",
-          "-metadata:s:v:0",
-          "color_space=display-p3",
-          "-r",
-          FRAMES_PER_SECOND.toString(),
-          fileName.replace(".mov", ".mp4"),
-        ];
+        const fileName = makeVideoFileName("mov");
         const args = [
           "-loglevel",
           "warning",
           "-framerate",
-          FRAMES_PER_SECOND.toString(),
+          "60",
           "-f",
           "image2pipe",
           "-i",
           "-",
           "-c:v",
-          "libx264",
-          "-preset",
-          "veryslow", // Higher quality than slow
-          "-crf",
-          "16", // Lower CRF for less compression
+          "prores_ks",
+          "-profile:v",
+          "3",
           "-pix_fmt",
           "yuv444p10le",
           "-colorspace",
@@ -105,9 +71,10 @@ if (import.meta.main) {
           "-metadata:s:v:0",
           "color_space=display-p3",
           "-r",
-          FRAMES_PER_SECOND.toString(),
+          "60",
           fileName,
         ];
+        console.log(args);
         const ffmpegProcess = new Deno.Command("./ffmpeg", {
           args,
           stdin: "piped",
@@ -126,6 +93,7 @@ if (import.meta.main) {
     }
     /**
      * If you don't call this, the resulting file is typically unreadable.
+     * (Hopefully I've fixed that by using a different file format.  But call this to be sure.)
      */
     static async close() {
       await this.#writer?.close();
@@ -169,7 +137,8 @@ if (import.meta.main) {
   };
 
   const makeScreenshotFileName = () => `output/${Date.now()}.png`;
-  const makeVideoFileName = () => `output/${Date.now()}.mp4`;
+  const makeVideoFileName = (extension: "mp4" | "mov") =>
+    `output/${Date.now()}.${extension}`;
 
   const processUrl = async (request: {
     url: string;
