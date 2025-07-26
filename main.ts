@@ -44,8 +44,7 @@ if (import.meta.main) {
      */
     static get writer() {
       if (!this.#writer) {
-        const fileName = makeVideoFileName("mov");
-        const args = [
+        const _prores_smaller_args = [
           "-loglevel",
           "warning",
           "-framerate",
@@ -57,7 +56,7 @@ if (import.meta.main) {
           "-c:v",
           "prores_ks",
           "-profile:v",
-          "3",
+          "1", // ProRes 422 (lower bitrate than 422 HQ)  Set to 3 to get ProRes 422 HQ, ~10gig/minute
           "-pix_fmt",
           "yuv444p10le",
           "-colorspace",
@@ -72,8 +71,42 @@ if (import.meta.main) {
           "color_space=display-p3",
           "-r",
           "60",
-          fileName,
+          makeVideoFileName("mov"),
         ];
+        const _youtube_args = [
+          "-loglevel",
+          "warning",
+          "-framerate",
+          "60",
+          "-f",
+          "image2pipe",
+          "-i",
+          "-",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "medium",
+          "-crf",
+          "14",
+          "-pix_fmt",
+          "yuv444p10le",
+          "-colorspace",
+          "bt709",
+          "-color_primaries",
+          "bt709",
+          "-color_trc",
+          "bt709",
+          "-color_range",
+          "pc",
+          "-metadata:s:v:0",
+          "color_space=display-p3",
+          "-movflags",
+          "frag_keyframe+empty_moov+faststart", // Crash-tolerant, CapCut-ready
+          "-r",
+          "60",
+          makeVideoFileName("mp4"),
+        ];
+        const args = _youtube_args;
         console.log(args);
         const ffmpegProcess = new Deno.Command("./ffmpeg", {
           args,
@@ -190,14 +223,26 @@ if (import.meta.main) {
           reason
         );
         try {
-          page.close();
+          // I've only gotten here once.  
+          // I got the message above saying that it was going to retry.
+          // And then it just hung forever.
+          // A added more console messages to help track down the problem.
+          console.info("👉 a", new Date().toLocaleTimeString());
+          await page.close();
+          console.info("👉 b", new Date().toLocaleTimeString());
           await new Promise((resolve) => setTimeout(resolve, 5000));
+          console.info("👉 c", new Date().toLocaleTimeString());
+          // Now I get this far.  It hangs after c, before d.
           page = await createPage();
+          console.info("👉 d", new Date().toLocaleTimeString());
           await initializeUrl();
+          console.info("👉 e", new Date().toLocaleTimeString());
           await page.evaluate((t) => showFrame(t), {
             args: [t],
           });
+          console.info("👉 f", new Date().toLocaleTimeString());
           const screenshot = await page.screenshot({ optimizeForSpeed: true });
+          console.info("👉 g", new Date().toLocaleTimeString());
           return screenshot;
         } catch (reason) {
           console.error(
@@ -319,6 +364,7 @@ if (import.meta.main) {
       await processUrl({
         url: "http://localhost:5173/fourier-smackdown.html",
         slurpAll: true,
+       slurpStartAt: 18557,
         expectedSource: "fourier-smackdown.ts",
         //frames: [1000, (61 / 60) * 1000],
       });
