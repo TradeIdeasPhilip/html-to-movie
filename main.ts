@@ -9,7 +9,7 @@ if (import.meta.main) {
    * Performance information will be sent to the console.
    */
   const startTime = performance.now();
-  const browser = await launch();
+  let browser = await launch();
 
   // MARK: Configurable Stuff
 
@@ -106,7 +106,7 @@ if (import.meta.main) {
           "60",
           makeVideoFileName("mp4"),
         ];
-        const args = _youtube_args;
+        const args = _prores_smaller_args;
         console.log(args);
         const ffmpegProcess = new Deno.Command("./ffmpeg", {
           args,
@@ -223,26 +223,33 @@ if (import.meta.main) {
           reason
         );
         try {
-          // I've only gotten here once.  
+          // I've only gotten here once.
           // I got the message above saying that it was going to retry.
           // And then it just hung forever.
           // A added more console messages to help track down the problem.
           console.info("👉 a", new Date().toLocaleTimeString());
           await page.close();
           console.info("👉 b", new Date().toLocaleTimeString());
-          await new Promise((resolve) => setTimeout(resolve, 5000));
+          // Now it hangs here.  browser.close() never returns.
+          await browser.close();
           console.info("👉 c", new Date().toLocaleTimeString());
-          // Now I get this far.  It hangs after c, before d.
-          page = await createPage();
+          await new Promise((resolve) => setTimeout(resolve, 5000));
           console.info("👉 d", new Date().toLocaleTimeString());
-          await initializeUrl();
+          browser = await launch();
           console.info("👉 e", new Date().toLocaleTimeString());
+          // Before I tried closing the browser,
+          // I tried just closing and reopening the page.
+          // This is where we were hanging, trying to create a page().
+          page = await createPage();
+          console.info("👉 f", new Date().toLocaleTimeString());
+          await initializeUrl();
+          console.info("👉 g", new Date().toLocaleTimeString());
           await page.evaluate((t) => showFrame(t), {
             args: [t],
           });
-          console.info("👉 f", new Date().toLocaleTimeString());
+          console.info("👉 h", new Date().toLocaleTimeString());
           const screenshot = await page.screenshot({ optimizeForSpeed: true });
-          console.info("👉 g", new Date().toLocaleTimeString());
+          console.info("👉 i", new Date().toLocaleTimeString());
           return screenshot;
         } catch (reason) {
           console.error(
@@ -364,9 +371,9 @@ if (import.meta.main) {
       await processUrl({
         url: "http://localhost:5173/fourier-smackdown.html",
         slurpAll: true,
-       slurpStartAt: 18557,
+        //slurpStartAt: 18557,
         expectedSource: "fourier-smackdown.ts",
-        //frames: [1000, (61 / 60) * 1000],
+        frames: [1000, (61 / 60) * 1000],
       });
 
       break;
