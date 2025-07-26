@@ -10,92 +10,26 @@ if (import.meta.main) {
    */
   const startTime = performance.now();
   const browser = await launch();
-  const page = await browser.newPage();
-
-  /**
-   * This is a wrapper around page.screenshot() which handles some errors.
-   *
-   * I'm  still looking at the best way to handle the errors.
-   * The details inside this function are still changing.
-   * @returns A PNG file, or `undefined` in case of failure.
-   * @throws nothing.
-   * This will catch any downstream errors,
-   * retry a finite number of times,
-   * and ultimately report `undefined` if we can't fix the problem.
-   */
-  const getScreenshot = async () => {
-    try {
-      const screenshot = await page.screenshot({ optimizeForSpeed: true });
-      return screenshot;
-    } catch (reason) {
-      console.warn("Retrying", reason);
-      try {
-        const screenshot = await page.screenshot({ optimizeForSpeed: true });
-        return screenshot;
-      } catch (reason) {
-        console.error("Failed", reason);
-        return undefined;
-      }
-    }
-    // This is the error I was seeing sometimes.
-    /*
-          error: Uncaught (in promise) RetryError: Retrying exceeded the maxAttempts (5).
-              throw new RetryError(error, maxAttempts);
-                    ^
-          at retry (https://jsr.io/@std/async/1.0.9/retry.ts:154:15)
-          at eventLoopTick (ext:core/01_core.js:216:9)
-          at async Page.screenshot (https://jsr.io/@astral/astral/0.4.9/src/page.ts:626:22)
-          at async processUrl (file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:132:28)
-          at async file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:172:7
-      Caused by: TimeoutError: Signal timed out.
-          at ext:deno_web/03_abort_signal.js:130:11
-          at eventLoopTick (ext:core/01_core.js:212:13)
-    */
-    // This is what I saw after adding this event handler.
-    /*
-        Retrying RetryError: Retrying exceeded the maxAttempts (5).
-          at retry (https://jsr.io/@std/async/1.0.9/retry.ts:154:15)
-          at eventLoopTick (ext:core/01_core.js:216:9)
-          at async Page.screenshot (https://jsr.io/@astral/astral/0.4.9/src/page.ts:626:22)
-          at async getScreenshot (file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:28:26)
-          at async processUrl (file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:148:28)
-          at async file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:192:7
-      Caused by TimeoutError: Signal timed out.
-          at ext:deno_web/03_abort_signal.js:130:11
-          at eventLoopTick (ext:core/01_core.js:212:13) {
-        name: "RetryError"
-      }
-      Failed RetryError: Retrying exceeded the maxAttempts (5).
-          at retry (https://jsr.io/@std/async/1.0.9/retry.ts:154:15)
-          at eventLoopTick (ext:core/01_core.js:216:9)
-          at async Page.screenshot (https://jsr.io/@astral/astral/0.4.9/src/page.ts:626:22)
-          at async getScreenshot (file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:33:28)
-          at async processUrl (file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:148:28)
-          at async file:///Users/philipsmolen/Documents/fun-git/html-to-movie/main.ts:192:7
-      Caused by TimeoutError: Signal timed out.
-          at ext:deno_web/03_abort_signal.js:130:11
-          at eventLoopTick (ext:core/01_core.js:212:13) {
-        name: "RetryError"
-      }
-      Aborting.  Unable to render frame 14934
-      Waiting for writes after 2179.2570044159997 seconds.
-      2179.4041388329997 seconds.
-   */
-    // It appears that the browser gets into some strange state.
-    // Repeating the operation doesn't help.
-    // I did manage to write out a useable mp4 file, so I don't have to restart from scratch.
-    // TODO Try closing and restarting the browser, then retrying.
-  };
 
   // MARK: Configurable Stuff
 
   // Note:  This is the size in CSS pixels, not device pixels.
   // You will get twice as many pixels (in each dimension) as you request here.
-  await page.setViewportSize({ width: 1920, height: 1080 });
-  //await page.setViewportSize({ width: 480, height: 270 });
+  const widthInCssPixels = 1920;
+  const heightInCssPixels = 1080;
   const FRAMES_PER_SECOND = 60;
 
   // MARK: Configuration Ends
+
+  const createPage = async () => {
+    const newPage = await browser.newPage();
+    await newPage.setViewportSize({
+      width: widthInCssPixels,
+      height: heightInCssPixels,
+    });
+    return newPage;
+  };
+  let page = await createPage();
 
   /**
    * This creates the *.mp4 file.
@@ -112,8 +46,7 @@ if (import.meta.main) {
       if (!this.#writer) {
         const fileName = makeVideoFileName();
         console.log(fileName);
-        // I copied most of this from https://shotstack.io/learn/use-ffmpeg-to-convert-images-to-video/
-        const args = [
+        const _args1 = [
           "-loglevel",
           "warning",
           "-framerate",
@@ -144,6 +77,37 @@ if (import.meta.main) {
           FRAMES_PER_SECOND.toString(),
           fileName.replace(".mov", ".mp4"),
         ];
+        const args = [
+          "-loglevel",
+          "warning",
+          "-framerate",
+          FRAMES_PER_SECOND.toString(),
+          "-f",
+          "image2pipe",
+          "-i",
+          "-",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryslow", // Higher quality than slow
+          "-crf",
+          "16", // Lower CRF for less compression
+          "-pix_fmt",
+          "yuv444p10le",
+          "-colorspace",
+          "bt709",
+          "-color_primaries",
+          "bt709",
+          "-color_trc",
+          "bt709",
+          "-color_range",
+          "pc",
+          "-metadata:s:v:0",
+          "color_space=display-p3",
+          "-r",
+          FRAMES_PER_SECOND.toString(),
+          fileName,
+        ];
         const ffmpegProcess = new Deno.Command("./ffmpeg", {
           args,
           stdin: "piped",
@@ -151,7 +115,14 @@ if (import.meta.main) {
         ffmpegProcess.ref();
         this.#writer = ffmpegProcess.stdin.getWriter();
       }
-      return this.#writer;
+      // This is a simple wrapper around this.#writer.write().
+      // Mostly I added this layer because this.#writer.write() would accept undefined as an input.
+      // I'm reserving undefined for error conditions, and I want TypeScript to help me catch these.
+      // And this hides more details about the #writer object that we just don't need to share.
+      return {
+        write: (chuck: Uint8Array<ArrayBufferLike>) =>
+          this.#writer!.write(chuck),
+      };
     }
     /**
      * If you don't call this, the resulting file is typically unreadable.
@@ -218,6 +189,58 @@ if (import.meta.main) {
       console.log(reason, request.url, fromRemote);
       return fromRemote;
     }
+    /**
+     * Ask the browser to show a specific frame, then take a screenshot of that frame.
+     *
+     * This function includes automatic error logging and retries.
+     * The underlying API calls are known to fail at unpredictable times.
+     * If they fail, we retry exactly once.
+     * If they fail again, we return undefined.
+     * @param t Ask the web page to display this frame.
+     * The exact meaning of t depends on the web software.
+     * Older software always fixed the range as 0 - 1.
+     * "slurp," the newest option, uses this as a frame number.  (I think.)
+     * Future plans will probably include a time in seconds or milliseconds,
+     * so the Deno side will control the frame rate.
+     * @returns A PNG file in a format appropriate for `FfmpegProcess.writer.write()`.
+     * Or `undefined` on failure.
+     * @throws This never throws anything.  Errors are returned as `undefined`.
+     */
+    async function screenshotAt(t: number) {
+      try {
+        await page.evaluate((t) => showFrame(t), {
+          args: [t],
+        });
+        const screenshot = await page.screenshot({ optimizeForSpeed: true });
+        return screenshot;
+      } catch (reason: unknown) {
+        console.warn(
+          "Retrying, failure at t=",
+          t,
+          new Date().toLocaleTimeString(),
+          reason
+        );
+        try {
+          page.close();
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+          page = await createPage();
+          await initializeUrl();
+          await page.evaluate((t) => showFrame(t), {
+            args: [t],
+          });
+          const screenshot = await page.screenshot({ optimizeForSpeed: true });
+          return screenshot;
+        } catch (reason) {
+          console.error(
+            "Giving up, failure at t=",
+            t,
+            new Date().toLocaleTimeString(),
+            reason
+          );
+          return undefined;
+        }
+      }
+    }
     const fromRemote = await initializeUrl("processUrl");
     if (
       request.expectedSource !== undefined &&
@@ -241,29 +264,12 @@ if (import.meta.main) {
           frameNumber++
         ) {
           const timeInSeconds = frameNumber / FRAMES_PER_SECOND;
-          page.evaluate((t) => showFrame(t), {
-            args: [timeInSeconds],
-          });
-          let screenshot = await getScreenshot();
+          const screenshot = await screenshotAt(timeInSeconds);
           if (!screenshot) {
-            // TODO test this code!
-            // I haven't been able to make the program fail yet.
-            // I was hoping it would fail on it's own, and then I tried some simple things to break it.
-            // I suspect this will help, but I have no idea what the problem is so I can't be sure.
-            // TODO copy this to other places if it works.
-            // This code is a mess and I'm not sure how to clean it up,
-            // so I don't want to think about copying anything until I'm sure this works.
-            await initializeUrl();
-            page.evaluate((t) => showFrame(t), {
-              args: [timeInSeconds],
-            });
-            screenshot = await getScreenshot();
-            if (!screenshot) {
-              console.error(
-                `Aborting.  Unable to render frame ${frameNumber}. timeInSeconds=${timeInSeconds}`
-              );
-              break;
-            }
+            console.error(
+              `Aborting.  Unable to render frame ${frameNumber}. timeInSeconds=${timeInSeconds}`
+            );
+            break;
           }
           await FfmpegProcess.writer.write(screenshot);
           if (frameNumber % 120 == 0) {
@@ -284,10 +290,7 @@ if (import.meta.main) {
           frameNumber <= lastFrame;
           frameNumber++
         ) {
-          page.evaluate((t) => showFrame(t), {
-            args: [frameNumber],
-          });
-          const screenshot = await getScreenshot();
+          const screenshot = await screenshotAt(frameNumber);
           if (!screenshot) {
             console.error(`Aborting.  Unable to render frame ${frameNumber}`);
             break;
@@ -308,10 +311,11 @@ if (import.meta.main) {
     if (request.seconds !== undefined) {
       const frameCount = request.seconds * FRAMES_PER_SECOND;
       for (let i = 0; i < frameCount; i++) {
-        page.evaluate((t) => showFrame(t), {
-          args: [i / (frameCount - 1)],
-        });
-        const screenshot = await page.screenshot();
+        const screenshot = await screenshotAt(i / (frameCount - 1));
+        if (!screenshot) {
+          console.warn("Bailing out at at i=", i);
+          break;
+        }
         await FfmpegProcess.writer.write(screenshot);
         if (i % 107 == 103) {
           console.log(
@@ -324,10 +328,13 @@ if (import.meta.main) {
     }
     if (request.frames) {
       for (const t of request.frames) {
-        page.evaluate((t) => showFrame(t), { args: [t] });
         const fileName = makeScreenshotFileName();
         console.log(fileName);
-        const screenshot = await page.screenshot();
+        const screenshot = await screenshotAt(t);
+        if (!screenshot) {
+          console.warn("Aborting durning individual frames phase.");
+          break;
+        }
         promises.push(Deno.writeFile(fileName, screenshot));
       }
     }
