@@ -1,15 +1,16 @@
 import { launch } from "jsr:@astral/astral";
 
-export function add(a: number, b: number): number {
-  return a + b;
-}
+// TODO:  https://pptr.dev/api/puppeteer.page.emulatemediafeatures
+// We can control a lot of things.
+// We can change this environment to look more like my normal browser, i.e. the test environment.
+// We can change the zoom (possibly a nearby API) so it's 1× and simple.
 
 if (import.meta.main) {
   /**
    * Performance information will be sent to the console.
    */
   const startTime = performance.now();
-  let browser = await launch();
+  const browser = await launch();
 
   // MARK: Configurable Stuff
 
@@ -29,7 +30,7 @@ if (import.meta.main) {
     });
     return newPage;
   };
-  let page = await createPage();
+  const page = await createPage();
 
   /**
    * This creates the *.mp4 file.
@@ -44,11 +45,20 @@ if (import.meta.main) {
      */
     static get writer() {
       if (!this.#writer) {
+        /**
+         * FFmpeg settings for ProRes 422 in MOV container, optimized for CapCut editing.
+         * @remarks
+         * - **Quality**: 10-bit `yuv444p10le` and `-profile:v 1` preserve darker gradients (0.08–0.35 multiplier), ideal for editing.
+         * - **File Size**: \~3–5GB/minute, suitable for 8-minute tests (\~24–40GB).
+         * - **Crash Tolerance**: Intra-frame encoding ensures partial MOVs are playable on Ctrl+C or crashes.
+         * - **Speed**: \~6–10 frames/s (\~48–80 minutes for 8 minutes on M2 MacBook Air).
+         * - **Use Case**: Essential for heavy editing (e.g., color grading, effects in CapCut) or if YouTube’s compression degrades quality in future projects. Use as a backup for such cases.
+         */
         const _prores_smaller_args = [
           "-loglevel",
           "warning",
           "-framerate",
-          "60",
+          FRAMES_PER_SECOND.toString(),
           "-f",
           "image2pipe",
           "-i",
@@ -70,14 +80,23 @@ if (import.meta.main) {
           "-metadata:s:v:0",
           "color_space=display-p3",
           "-r",
-          "60",
+          FRAMES_PER_SECOND.toString(),
           makeVideoFileName("mov"),
         ];
+        /**
+         * FFmpeg settings for H.264 in MP4 container, optimized for YouTube uploads.
+         * @remarks
+         * - **Quality**: 10-bit `yuv444p10le` and `-crf 14` preserve darker gradients, matching ProRes 422 quality on YouTube after VP9 re-encoding (~8.8 Mbps).
+         * - **File Size**: \~100–200MB/minute, ideal for 8-minute tests (\~0.8–1.6GB).
+         * - **Crash Tolerance**: `-movflags frag_keyframe+empty_moov` ensures partial MP4s are playable on Ctrl+C or crashes.
+         * - **Speed**: `-preset medium` (\~4–5 frames/s, \~96–120 minutes for 8 minutes) is slower than ProRes but fast enough for workflows.
+         * - **YouTube**: `-movflags faststart` optimizes for quick processing and playback.
+         */
         const _youtube_args = [
           "-loglevel",
           "warning",
           "-framerate",
-          "60",
+          FRAMES_PER_SECOND.toString(),
           "-f",
           "image2pipe",
           "-i",
@@ -103,10 +122,10 @@ if (import.meta.main) {
           "-movflags",
           "frag_keyframe+empty_moov+faststart", // Crash-tolerant, CapCut-ready
           "-r",
-          "60",
+          FRAMES_PER_SECOND.toString(),
           makeVideoFileName("mp4"),
         ];
-        const args = _prores_smaller_args;
+        const args = _youtube_args;
         console.log(args);
         const ffmpegProcess = new Deno.Command("./ffmpeg", {
           args,
@@ -191,13 +210,15 @@ if (import.meta.main) {
       console.log(reason, request.url, fromRemote);
       return fromRemote;
     }
+    let puppeteerHasAlreadyFailed = false;
     /**
      * Ask the browser to show a specific frame, then take a screenshot of that frame.
      *
-     * This function includes automatic error logging and retries.
-     * The underlying API calls are known to fail at unpredictable times.
-     * If they fail, we retry exactly once.
-     * If they fail again, we return undefined.
+     * In case of error this sends status to the console then returns `undefined`.
+     * Upon receiving this, it's best to do an orderly shutdown.
+     * I've tried reconnecting to Puppeteer, but that never works.
+     * I just hang forever.
+     * It's better to restart the program after a graceful shutdown.
      * @param t Ask the web page to display this frame.
      * The exact meaning of t depends on the web software.
      * Older software always fixed the range as 0 - 1.
@@ -209,6 +230,9 @@ if (import.meta.main) {
      * @throws This never throws anything.  Errors are returned as `undefined`.
      */
     async function screenshotAt(t: number) {
+      if (puppeteerHasAlreadyFailed) {
+        return undefined;
+      }
       try {
         await page.evaluate((t) => showFrame(t), {
           args: [t],
@@ -216,50 +240,14 @@ if (import.meta.main) {
         const screenshot = await page.screenshot({ optimizeForSpeed: true });
         return screenshot;
       } catch (reason: unknown) {
+        puppeteerHasAlreadyFailed = true;
         console.warn(
-          "Retrying, failure at t=",
+          "Giving up, failure at t=",
           t,
           new Date().toLocaleTimeString(),
           reason
         );
-        try {
-          // I've only gotten here once.
-          // I got the message above saying that it was going to retry.
-          // And then it just hung forever.
-          // A added more console messages to help track down the problem.
-          console.info("👉 a", new Date().toLocaleTimeString());
-          await page.close();
-          console.info("👉 b", new Date().toLocaleTimeString());
-          // Now it hangs here.  browser.close() never returns.
-          await browser.close();
-          console.info("👉 c", new Date().toLocaleTimeString());
-          await new Promise((resolve) => setTimeout(resolve, 5000));
-          console.info("👉 d", new Date().toLocaleTimeString());
-          browser = await launch();
-          console.info("👉 e", new Date().toLocaleTimeString());
-          // Before I tried closing the browser,
-          // I tried just closing and reopening the page.
-          // This is where we were hanging, trying to create a page().
-          page = await createPage();
-          console.info("👉 f", new Date().toLocaleTimeString());
-          await initializeUrl();
-          console.info("👉 g", new Date().toLocaleTimeString());
-          await page.evaluate((t) => showFrame(t), {
-            args: [t],
-          });
-          console.info("👉 h", new Date().toLocaleTimeString());
-          const screenshot = await page.screenshot({ optimizeForSpeed: true });
-          console.info("👉 i", new Date().toLocaleTimeString());
-          return screenshot;
-        } catch (reason) {
-          console.error(
-            "Giving up, failure at t=",
-            t,
-            new Date().toLocaleTimeString(),
-            reason
-          );
-          return undefined;
-        }
+        return undefined;
       }
     }
     const fromRemote = await initializeUrl("processUrl");
@@ -269,6 +257,18 @@ if (import.meta.main) {
     ) {
       console.log(request);
       throw new Error("wrong source");
+    }
+    if (request.frames) {
+      for (const t of request.frames) {
+        const fileName = makeScreenshotFileName();
+        console.log(fileName);
+        const screenshot = await screenshotAt(t);
+        if (!screenshot) {
+          console.warn("Aborting durning individual frames phase.");
+          break;
+        }
+        promises.push(Deno.writeFile(fileName, screenshot));
+      }
     }
     if (request.slurpAll) {
       const { firstFrame, lastFrame, seconds } = fromRemote;
@@ -289,6 +289,9 @@ if (import.meta.main) {
           if (!screenshot) {
             console.error(
               `Aborting.  Unable to render frame ${frameNumber}. timeInSeconds=${timeInSeconds}`
+            );
+            console.log(
+              `Consider slurpStartAt: ${timeInSeconds} when retrying.`
             );
             break;
           }
@@ -314,6 +317,7 @@ if (import.meta.main) {
           const screenshot = await screenshotAt(frameNumber);
           if (!screenshot) {
             console.error(`Aborting.  Unable to render frame ${frameNumber}`);
+            console.log(`Consider slurpStartAt: ${frameNumber} when retrying.`);
             break;
           }
           await FfmpegProcess.writer.write(screenshot);
@@ -325,6 +329,7 @@ if (import.meta.main) {
                 3
               )}% at ${new Date().toLocaleTimeString()}`
             );
+            await new Promise((resolve) => setTimeout(resolve, 3000));
           }
         }
       }
@@ -344,19 +349,8 @@ if (import.meta.main) {
               3
             )}% at ${new Date().toLocaleTimeString()}`
           );
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
-      }
-    }
-    if (request.frames) {
-      for (const t of request.frames) {
-        const fileName = makeScreenshotFileName();
-        console.log(fileName);
-        const screenshot = await screenshotAt(t);
-        if (!screenshot) {
-          console.warn("Aborting durning individual frames phase.");
-          break;
-        }
-        promises.push(Deno.writeFile(fileName, screenshot));
       }
     }
   };
@@ -369,13 +363,22 @@ if (import.meta.main) {
     case "pentagrams": {
       // random-svg-tests
       await processUrl({
-        url: "http://localhost:5173/fourier-smackdown.html",
+        url: `http://localhost:5173/fourier-smackdown.html?index=11`,
         slurpAll: true,
-        //slurpStartAt: 18557,
+        slurpStartAt: 1379,
         expectedSource: "fourier-smackdown.ts",
-        frames: [1000, (61 / 60) * 1000],
+        //frames: [1000, (61 / 60) * 1000],
       });
-
+      for (let i = 12; i < 28; i++) {
+        console.log(`starting chapter ${i}`, new Date().toLocaleTimeString());
+        await processUrl({
+          url: `http://localhost:5173/fourier-smackdown.html?index=${i}`,
+          slurpAll: true,
+          //slurpStartAt: 18557,
+          expectedSource: "fourier-smackdown.ts",
+          //frames: [1000, (61 / 60) * 1000],
+        });
+      }
       break;
     }
     case "path-to-fourier": {
