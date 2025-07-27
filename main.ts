@@ -86,7 +86,7 @@ if (import.meta.main) {
         /**
          * FFmpeg settings for H.264 in MP4 container, optimized for YouTube uploads.
          * @remarks
-         * - **Quality**: 10-bit `yuv444p10le` and `-crf 14` preserve darker gradients, matching ProRes 422 quality on YouTube after VP9 re-encoding (~8.8 Mbps).
+         * - **Quality**: 10-bit `yuv444p10le` and `-crf 14` preserve darker gradients, matching ProRes 422 quality on YouTube after VP9 re-encoding (\~8.8 Mbps).
          * - **File Size**: \~100–200MB/minute, ideal for 8-minute tests (\~0.8–1.6GB).
          * - **Crash Tolerance**: `-movflags frag_keyframe+empty_moov` ensures partial MP4s are playable on Ctrl+C or crashes.
          * - **Speed**: `-preset medium` (\~4–5 frames/s, \~96–120 minutes for 8 minutes) is slower than ProRes but fast enough for workflows.
@@ -189,8 +189,9 @@ if (import.meta.main) {
   };
 
   const makeScreenshotFileName = () => `output/${Date.now()}.png`;
+  let filenamePrefix = "";
   const makeVideoFileName = (extension: "mp4" | "mov") =>
-    `output/${Date.now()}.${extension}`;
+    `output/${filenamePrefix}${Date.now()}.${extension}`;
 
   const processUrl = async (request: {
     url: string;
@@ -202,6 +203,12 @@ if (import.meta.main) {
     slurpStartAt?: number;
   }) => {
     async function initializeUrl(reason = "retry") {
+      if (puppeteerHasAlreadyFailed) {
+        console.warn(
+          "Ignoring initializeUrl() request because puppeteerHasAlreadyFailed."
+        );
+        return undefined;
+      }
       await page.goto(request.url);
       const fromRemote = await page.evaluate(
         (script) => initScreenCapture(script),
@@ -250,7 +257,9 @@ if (import.meta.main) {
         return undefined;
       }
     }
-    const fromRemote = await initializeUrl("processUrl");
+    // TODO that ! below is very ugly.  All of the error handling is currently a mess.
+    // The ! is right because I know that complicated circumstances will make it true.
+    const fromRemote = (await initializeUrl("processUrl"))!;
     if (
       request.expectedSource !== undefined &&
       request.expectedSource != fromRemote.source
@@ -329,7 +338,6 @@ if (import.meta.main) {
                 3
               )}% at ${new Date().toLocaleTimeString()}`
             );
-            await new Promise((resolve) => setTimeout(resolve, 3000));
           }
         }
       }
@@ -349,7 +357,6 @@ if (import.meta.main) {
               3
             )}% at ${new Date().toLocaleTimeString()}`
           );
-          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       }
     }
@@ -362,23 +369,22 @@ if (import.meta.main) {
   switch (which) {
     case "pentagrams": {
       // random-svg-tests
+      const index = Deno.args[0];
+      let slurpStartAt: number | undefined;
+      if (Deno.args.length >= 2) {
+        slurpStartAt = +Deno.args[1];
+        if (!isFinite(slurpStartAt)) {
+          console.error("invalid slurpStartAt", Deno.args[1]);
+        }
+      }
+      filenamePrefix = `pentagram${index.padStart(2, "0")}-`;
       await processUrl({
-        url: `http://localhost:5173/fourier-smackdown.html?index=11`,
+        url: `http://localhost:5173/fourier-smackdown.html?index=${index}`,
         slurpAll: true,
-        slurpStartAt: 1379,
+        slurpStartAt,
         expectedSource: "fourier-smackdown.ts",
         //frames: [1000, (61 / 60) * 1000],
       });
-      for (let i = 12; i < 28; i++) {
-        console.log(`starting chapter ${i}`, new Date().toLocaleTimeString());
-        await processUrl({
-          url: `http://localhost:5173/fourier-smackdown.html?index=${i}`,
-          slurpAll: true,
-          //slurpStartAt: 18557,
-          expectedSource: "fourier-smackdown.ts",
-          //frames: [1000, (61 / 60) * 1000],
-        });
-      }
       break;
     }
     case "path-to-fourier": {
@@ -506,12 +512,21 @@ if (import.meta.main) {
   console.log(
     `Waiting for writes after ${
       (performance.now() - startTime) / 1000
-    } seconds.`
+    } seconds.`,
+    new Date().toLocaleTimeString()
   );
 
-  promises.push(FfmpegProcess.close(), browser.close());
+  promises.push(FfmpegProcess.close() /*, browser.close()*/);
   await Promise.all(promises);
 
   const endTime = performance.now();
-  console.log(`${(endTime - startTime) / 1000} seconds.`);
+  console.log(
+    `${(endTime - startTime) / 1000} seconds.`,
+    new Date().toLocaleTimeString()
+  );
+
+  // browser.close() hangs sometimes.
+  // If I don't call it explicitly, i still hang sometimes.
+  // presumably it's being called in the normal shutdown sequence
+  Deno.exit(0);
 }
