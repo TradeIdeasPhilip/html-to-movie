@@ -1,0 +1,14 @@
+deno run --allow-all ./main.ts 11 3488
+deno run --allow-all ./main.ts 12 2972
+deno run --allow-all ./main.ts 13 3568
+deno run --allow-all ./main.ts 14 3203
+deno run --allow-all ./main.ts 15 1385
+deno run --allow-all ./main.ts 17 661
+deno run --allow-all ./main.ts 18 1002
+deno run --allow-all ./main.ts 19 177
+deno run --allow-all ./main.ts 22
+deno run --allow-all ./main.ts 23
+deno run --allow-all ./main.ts 24
+deno run --allow-all ./main.ts 25
+deno run --allow-all ./main.ts 26
+deno run --allow-all ./main.ts 27

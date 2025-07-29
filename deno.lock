@@ -2,6 +2,7 @@
   "version": "4",
   "specifiers": {
     "jsr:@astral/astral@*": "0.4.9",
+    "jsr:@astral/astral@0.5.0": "0.5.0",
     "jsr:@deno-library/progress@^1.5.1": "1.5.1",
     "jsr:@std/assert@1": "1.0.13",
     "jsr:@std/async@1": "1.0.9",
@@ -15,6 +16,16 @@
   "jsr": {
     "@astral/astral@0.4.9": {
       "integrity": "8e62a10f6f43c0155647c2564fa2e6c1186e74285272b30d8bae4294326435ff",
+      "dependencies": [
+        "jsr:@deno-library/progress",
+        "jsr:@std/async",
+        "jsr:@std/fs",
+        "jsr:@std/path",
+        "jsr:@zip-js/zip-js"
+      ]
+    },
+    "@astral/astral@0.5.0": {
+      "integrity": "e5d8d665b1817c84f912af36bccba12c5953d3b369901c276d799c3b7d03e08f",
       "dependencies": [
         "jsr:@deno-library/progress",
         "jsr:@std/async",

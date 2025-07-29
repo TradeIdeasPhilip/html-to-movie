@@ -1,4 +1,4 @@
-import { launch } from "jsr:@astral/astral";
+import { launch } from "jsr:@astral/astral@0.5.0";
 
 // TODO:  https://pptr.dev/api/puppeteer.page.emulatemediafeatures
 // We can control a lot of things.
