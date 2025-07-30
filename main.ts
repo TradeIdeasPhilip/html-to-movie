@@ -1,4 +1,5 @@
 import { launch } from "jsr:@astral/astral@0.5.0";
+import { FfmpegProcess } from "./ffmpeg.ts";
 
 // TODO:  https://pptr.dev/api/puppeteer.page.emulatemediafeatures
 // We can control a lot of things.
@@ -45,126 +46,6 @@ if (import.meta.main) {
   };
   const page = await createPage();
 
-  /**
-   * This creates the *.mp4 file.
-   *
-   * This is static for simplicity.
-   * Each time you run this program it will create at most one of these files.
-   */
-  class FfmpegProcess {
-    static #writer: WritableStreamDefaultWriter<Uint8Array> | undefined;
-    /**
-     * The writer will be created on the first use of this property, and reused as necessary.
-     */
-    static get writer() {
-      if (!this.#writer) {
-        /**
-         * FFmpeg settings for ProRes 422 in MOV container, optimized for CapCut editing.
-         * @remarks
-         * - **Quality**: 10-bit `yuv444p10le` and `-profile:v 1` preserve darker gradients (0.08–0.35 multiplier), ideal for editing.
-         * - **File Size**: \~3–5GB/minute, suitable for 8-minute tests (\~24–40GB).
-         * - **Crash Tolerance**: Intra-frame encoding ensures partial MOVs are playable on Ctrl+C or crashes.
-         * - **Speed**: \~6–10 frames/s (\~48–80 minutes for 8 minutes on M2 MacBook Air).
-         * - **Use Case**: Essential for heavy editing (e.g., color grading, effects in CapCut) or if YouTube’s compression degrades quality in future projects. Use as a backup for such cases.
-         */
-        const _prores_smaller_args = [
-          "-loglevel",
-          "warning",
-          "-framerate",
-          FRAMES_PER_SECOND.toString(),
-          "-f",
-          "image2pipe",
-          "-i",
-          "-",
-          "-c:v",
-          "prores_ks",
-          "-profile:v",
-          "1", // ProRes 422 (lower bitrate than 422 HQ)  Set to 3 to get ProRes 422 HQ, ~10gig/minute
-          "-pix_fmt",
-          "yuv444p10le",
-          "-colorspace",
-          "bt709",
-          "-color_primaries",
-          "bt709",
-          "-color_trc",
-          "bt709",
-          "-color_range",
-          "pc",
-          "-metadata:s:v:0",
-          "color_space=display-p3",
-          "-r",
-          FRAMES_PER_SECOND.toString(),
-          makeVideoFileName("mov"),
-        ];
-        /**
-         * FFmpeg settings for H.264 in MP4 container, optimized for YouTube uploads.
-         * @remarks
-         * - **Quality**: 10-bit `yuv444p10le` and `-crf 14` preserve darker gradients, matching ProRes 422 quality on YouTube after VP9 re-encoding (\~8.8 Mbps).
-         * - **File Size**: \~100–200MB/minute, ideal for 8-minute tests (\~0.8–1.6GB).
-         * - **Crash Tolerance**: `-movflags frag_keyframe+empty_moov` ensures partial MP4s are playable on Ctrl+C or crashes.
-         * - **Speed**: `-preset medium` (\~4–5 frames/s, \~96–120 minutes for 8 minutes) is slower than ProRes but fast enough for workflows.
-         * - **YouTube**: `-movflags faststart` optimizes for quick processing and playback.
-         */
-        const _youtube_args = [
-          "-loglevel",
-          "warning",
-          "-framerate",
-          FRAMES_PER_SECOND.toString(),
-          "-f",
-          "image2pipe",
-          "-i",
-          "-",
-          "-c:v",
-          "libx264",
-          "-preset",
-          "medium",
-          "-crf",
-          "14",
-          "-pix_fmt",
-          "yuv444p10le",
-          "-colorspace",
-          "bt709",
-          "-color_primaries",
-          "bt709",
-          "-color_trc",
-          "bt709",
-          "-color_range",
-          "pc",
-          "-metadata:s:v:0",
-          "color_space=display-p3",
-          "-movflags",
-          "frag_keyframe+empty_moov+faststart", // Crash-tolerant, CapCut-ready
-          "-r",
-          FRAMES_PER_SECOND.toString(),
-          makeVideoFileName("mp4"),
-        ];
-        const args = _youtube_args;
-        console.log(args);
-        const ffmpegProcess = new Deno.Command("./ffmpeg", {
-          args,
-          stdin: "piped",
-        }).spawn();
-        ffmpegProcess.ref();
-        this.#writer = ffmpegProcess.stdin.getWriter();
-      }
-      // This is a simple wrapper around this.#writer.write().
-      // Mostly I added this layer because this.#writer.write() would accept undefined as an input.
-      // I'm reserving undefined for error conditions, and I want TypeScript to help me catch these.
-      // And this hides more details about the #writer object that we just don't need to share.
-      return {
-        write: (chuck: Uint8Array<ArrayBufferLike>) =>
-          this.#writer!.write(chuck),
-      };
-    }
-    /**
-     * If you don't call this, the resulting file is typically unreadable.
-     * (Hopefully I've fixed that by using a different file format.  But call this to be sure.)
-     */
-    static async close() {
-      await this.#writer?.close();
-    }
-  }
-
   const promises: Promise<void>[] = [];
 
   /**
@@ -202,9 +83,8 @@ if (import.meta.main) {
   };
 
   const makeScreenshotFileName = () => `output/${Date.now()}.png`;
-  let filenamePrefix = "";
-  const makeVideoFileName = (extension: "mp4" | "mov") =>
-    `output/${filenamePrefix}${Date.now()}.${extension}`;
+
+  const ffmpegProcess = new FfmpegProcess();
 
   const processUrl = async (request: {
     url: string;
@@ -317,7 +197,7 @@ if (import.meta.main) {
             );
             break;
           }
-          await FfmpegProcess.writer.write(screenshot);
+          await ffmpegProcess.writer.write(screenshot);
           if (frameNumber % 120 == 0) {
             console.log(
               `${frameNumber} of ${lastFrameNumber} frames, ${timeInSeconds} of ${seconds} seconds, ${(
@@ -342,7 +222,7 @@ if (import.meta.main) {
             console.log(`Consider slurpStartAt: ${frameNumber} when retrying.`);
             break;
           }
-          await FfmpegProcess.writer.write(screenshot);
+          await ffmpegProcess.writer.write(screenshot);
           if (frameNumber % 103 == 101) {
             const index = frameNumber - firstFrame;
             const total = lastFrame - firstFrame;
@@ -363,7 +243,7 @@ if (import.meta.main) {
           console.warn("Bailing out at at i=", i);
           break;
         }
-        await FfmpegProcess.writer.write(screenshot);
+        await ffmpegProcess.writer.write(screenshot);
         if (i % 107 == 103) {
           console.log(
             `${i} of ${frameCount}, ${((i / frameCount) * 100).toFixed(
@@ -390,7 +270,9 @@ if (import.meta.main) {
           console.error("invalid slurpStartAt", Deno.args[1]);
         }
       }
-      filenamePrefix = `pentagram${index.padStart(2, "0")}-`;
+      //filenamePrefix = `pentagram${index.padStart(2, "0")}-`;
+      // For the moment you can't control the filename prefix.
+      // That's available in FfmpegProcess, but it's a pain to do here.
       await processUrl({
         url: `http://localhost:5173/fourier-smackdown.html?index=${index}`,
         slurpAll: true,
@@ -529,7 +411,7 @@ if (import.meta.main) {
     new Date().toLocaleTimeString()
   );
 
-  promises.push(FfmpegProcess.close() /*, browser.close()*/);
+  promises.push(ffmpegProcess.close() /*, browser.close()*/);
   await Promise.all(promises);
 
   const endTime = performance.now();
