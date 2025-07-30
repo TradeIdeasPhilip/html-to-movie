@@ -5,6 +5,19 @@ import { launch } from "jsr:@astral/astral@0.5.0";
 // We can change this environment to look more like my normal browser, i.e. the test environment.
 // We can change the zoom (possibly a nearby API) so it's 1× and simple.
 
+// TODO
+// Start a separate process that does nothing but handle puppeteer.
+// Protocol:
+// Any and all configuration is on the command line.
+// It listens on the standard input for frame numbers.
+// When standard input closes, the program awaits any output and such then gracefully closes.
+// When it receives a frame number it takes the screen snapshot and sends it to the standard error.
+// And a simple confirmation is sent to standard output.
+// On error nothing is sent to the standard error and the program exits gracefully, awaiting any output and such.
+
+// Do console logs go to standard output or error?
+// Can we capture those?
+
 if (import.meta.main) {
   /**
    * Performance information will be sent to the console.
